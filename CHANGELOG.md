@@ -2,6 +2,7 @@
 
 ## 0.5.0
 
+- **Built for gitnexus >= 1.4.8** — aligned all tool schemas and MCP contracts with gitnexus 1.4.8. Adds `gitnexus_rename` and `gitnexus_cypher` tools, updates `detect_changes` to use `scope`/`base_ref`, normalizes parameter names (`maxDepth`, `includeTests`, `file_path`), and adds multi-repo routing with automatic repo root detection.
 - **Interactive menu** — `/gitnexus` opens a menu with status display, Analyze, Settings, and Help. Status is shown inline in the menu title. `/gitnexus status` and `/gitnexus analyze` still work as direct shortcuts.
 - **Settings panel** — `/gitnexus settings` opens a native TUI settings panel (SettingsList) for auto-augment, timeout, max augments per result, secondary pattern limit, and gitnexus command. All settings persist to `~/.pi/pi-gitnexus.json` and apply immediately.
 - **Subcommand autocomplete** — typing `/gitnexus ` now autocompletes subcommands (status, analyze, on, off, settings, query, context, impact, help).

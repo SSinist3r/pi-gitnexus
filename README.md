@@ -36,7 +36,7 @@ Seven tools are also registered directly in pi — the agent can use them explic
 
 ## Requirements
 
-- [gitnexus](https://github.com/abhigyanpatwari/GitNexus) available as `gitnexus` on PATH (e.g. `npm i -g gitnexus`)
+- [gitnexus](https://github.com/abhigyanpatwari/GitNexus) >= 1.4.8 available as `gitnexus` on PATH (e.g. `npm i -g gitnexus`)
 - A GitNexus index in your project: run `/gitnexus analyze`
 
 The extension never installs anything automatically. It assumes `gitnexus` is on PATH. If your setup differs, use `/gitnexus settings` to set a custom command (e.g. `npx gitnexus@latest`).
@@ -127,6 +127,7 @@ This extension (pi-gitnexus) is MIT licensed. [GitNexus](https://github.com/abhi
 
 ## Notes
 
+- Tested with gitnexus 1.4.8. Older versions may have incompatible MCP schemas.
 - The extension never runs `gitnexus analyze` automatically — indexing is always user-initiated via `/gitnexus analyze`.
 - The index is a static snapshot. Re-run `/gitnexus analyze` after significant code changes. The agent will suggest this when the index appears stale.
 - In multi-repo GitNexus setups the extension automatically passes the current repo root path to MCP tools, but every tool also accepts an explicit `repo` override.
