@@ -1,7 +1,7 @@
 import { spawn } from 'child_process';
-import { posix, resolve, relative, sep, basename, extname, join } from 'path';
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { homedir } from 'os';
+import { basename, extname, join, posix, relative, resolve, sep } from 'path';
 
 /** Max output chars returned to the LLM. Prevents context flooding. JS strings are UTF-16 chars, not bytes. */
 export const MAX_OUTPUT_CHARS = 8 * 1024;
@@ -71,9 +71,6 @@ export function setAugmentTimeout(seconds: number): void {
   augmentTimeout = seconds * 1000;
 }
 
-export function getAugmentTimeout(): number {
-  return augmentTimeout / 1000;
-}
 
 /** Per-cwd cache: resolved repo root with .gitnexus, or null if none found. */
 const indexRootCache = new Map<string, string | null>();

@@ -1,9 +1,9 @@
-import { spawn } from 'child_process';
 import type { ExtensionAPI, ExtensionContext } from '@mariozechner/pi-coding-agent';
-import { findGitNexusIndex, findGitNexusRoot, clearIndexCache, extractPattern, extractFilePatternsFromContent, extractFilesFromReadMany, runAugment, spawnEnv, updateSpawnEnv, gitnexusCmd, setGitnexusCmd, setAugmentTimeout, loadSavedConfig, saveConfig, resolveGitNexusCmd, type GitNexusConfig } from './gitnexus';
+import { spawn } from 'child_process';
+import { clearIndexCache, extractFilePatternsFromContent, extractFilesFromReadMany, extractPattern, findGitNexusIndex, findGitNexusRoot, type GitNexusConfig, gitnexusCmd, loadSavedConfig, resolveGitNexusCmd, runAugment, setAugmentTimeout, setGitnexusCmd, spawnEnv, updateSpawnEnv } from './gitnexus';
 import { mcpClient } from './mcp-client';
 import { registerTools } from './tools';
-import { openSettingsMenu } from './ui/settings-menu';
+import { openMainMenu } from './ui/main-menu';
 
 const SEARCH_TOOLS = new Set(['grep', 'find', 'bash', 'read', 'read_many']);
 
@@ -179,8 +179,16 @@ export default function(pi: ExtensionAPI) {
   pi.on('session_start',  (_event: unknown, ctx: ExtensionContext) => { void onSession(ctx); });
   pi.on('session_switch', (_event: unknown, ctx: ExtensionContext) => { void onSession(ctx); });
 
+  const subcommands = ['status', 'analyze', 'on', 'off', 'settings', 'query', 'context', 'impact', 'help'];
+
   pi.registerCommand('gitnexus', {
     description: 'GitNexus knowledge graph. Type /gitnexus help for usage.',
+    getArgumentCompletions: (prefix: string) => {
+      const items = subcommands
+        .filter(s => s.startsWith(prefix))
+        .map(s => ({ value: s, label: s }));
+      return items.length > 0 ? items : null;
+    },
     handler: async (args: string, ctx: ExtensionContext) => {
       const parts = args.trim().split(/\s+/);
       const sub = parts[0] ?? '';
@@ -221,10 +229,10 @@ export default function(pi: ExtensionAPI) {
           '/gitnexus — GitNexus knowledge graph\n' +
           '\n' +
           'Commands:\n' +
-          '  /gitnexus             — show status\n' +
+          '  /gitnexus             — interactive menu (status & settings)\n' +
+          '  /gitnexus status      — show status\n' +
           '  /gitnexus analyze     — index the codebase\n' +
           '  /gitnexus on|off      — enable/disable auto-augment on searches\n' +
-          '  /gitnexus settings    — interactive settings menu\n' +
           '  /gitnexus <pattern>   — manual graph lookup\n' +
           '  /gitnexus query <q>   — search execution flows\n' +
           '  /gitnexus context <n> — callers/callees of a symbol\n' +
@@ -249,53 +257,26 @@ export default function(pi: ExtensionAPI) {
       // /gitnexus  or  /gitnexus config | settings — main menu
       if (!sub || sub === 'config' || sub === 'settings') {
         const state = { augmentEnabled };
-        const showStatus = async () => {
-          if (!binaryAvailable) {
-            ctx.ui.notify('gitnexus is not installed. Install: npm i -g gitnexus', 'warning');
-            return;
-          }
-          if (!findGitNexusIndex(ctx.cwd)) {
-            ctx.ui.notify('No GitNexus index found. Run: /gitnexus analyze', 'info');
-            return;
-          }
-          const out = await new Promise<string>((resolve_) => {
-            let stdout = '';
-            const [bin, ...baseArgs] = gitnexusCmd;
-            const proc = spawn(bin, [...baseArgs, 'status'], {
-              cwd: ctx.cwd,
-              stdio: ['ignore', 'pipe', 'ignore'],
-              env: spawnEnv,
-            });
-            proc.stdout.on('data', (chunk: { toString(): string }) => { stdout += chunk.toString(); });
-            proc.on('close', () => resolve_(stdout.trim()));
-            proc.on('error', () => resolve_(''));
-          });
-          const augmentLine = state.augmentEnabled
-            ? `Auto-augment: on (${hookFires} intercepted, ${augmentHits} enriched this session)`
-            : 'Auto-augment: off';
-          ctx.ui.notify((out ? out + '\n' : '') + augmentLine, 'info');
-        };
-        const mainMenu = async (): Promise<void> => {
-          const choices = [
-            'Status',
-            'Settings',
-          ];
-          const choice = await ctx.ui.select('GitNexus', choices);
-          if (!choice) return;
-          if (choice === 'Status') {
-            await showStatus();
-            return mainMenu();
-          }
-          if (choice === 'Settings') {
-            await openSettingsMenu(ctx.ui, cfg, state, async () => {
-              augmentEnabled = state.augmentEnabled;
-              if (cfg.cmd) setGitnexusCmd(cfg.cmd.trim().split(/\s+/));
-              if (cfg.augmentTimeout) setAugmentTimeout(cfg.augmentTimeout);
-            });
-            return mainMenu();
-          }
-        };
-        await mainMenu();
+        await openMainMenu({
+          ui: ctx.ui,
+          cwd: ctx.cwd,
+          cfg,
+          state,
+          binaryAvailable,
+          gitnexusCmd,
+          spawnEnv,
+          getHookFires: () => hookFires,
+          getAugmentHits: () => augmentHits,
+          findGitNexusIndex,
+          clearIndexCache,
+          setGitnexusCmd,
+          setAugmentTimeout,
+          syncState: () => {
+            augmentEnabled = state.augmentEnabled;
+            if (cfg.cmd) setGitnexusCmd(cfg.cmd.trim().split(/\s+/));
+            if (cfg.augmentTimeout) setAugmentTimeout(cfg.augmentTimeout);
+          },
+        });
         return;
       }
 
