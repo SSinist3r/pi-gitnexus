@@ -1,8 +1,9 @@
 import { spawn } from 'child_process';
 import type { ExtensionAPI, ExtensionContext } from '@mariozechner/pi-coding-agent';
-import { findGitNexusIndex, findGitNexusRoot, clearIndexCache, extractPattern, extractFilePatternsFromContent, extractFilesFromReadMany, runAugment, spawnEnv, updateSpawnEnv, gitnexusCmd, setGitnexusCmd, loadSavedConfig, saveConfig, resolveGitNexusCmd } from './gitnexus';
+import { findGitNexusIndex, findGitNexusRoot, clearIndexCache, extractPattern, extractFilePatternsFromContent, extractFilesFromReadMany, runAugment, spawnEnv, updateSpawnEnv, gitnexusCmd, setGitnexusCmd, setAugmentTimeout, loadSavedConfig, saveConfig, resolveGitNexusCmd, type GitNexusConfig } from './gitnexus';
 import { mcpClient } from './mcp-client';
 import { registerTools } from './tools';
+import { openSettingsMenu } from './ui/settings-menu';
 
 const SEARCH_TOOLS = new Set(['grep', 'find', 'bash', 'read', 'read_many']);
 
@@ -37,6 +38,9 @@ let binaryAvailable = false;
 
 /** Working directory of the current session — ctx.cwd in tool_result events may differ. */
 let sessionCwd = '';
+
+/** Persisted config — loaded on session_start, mutated by the settings menu. */
+let cfg: GitNexusConfig = {};
 
 /** Controls whether the tool_result hook auto-appends graph context. Tools are unaffected. */
 let augmentEnabled = true;
@@ -90,7 +94,7 @@ export default function(pi: ExtensionAPI) {
       const files = extractFilesFromReadMany(event.input, event.content);
       const fresh = files.filter(f => !augmentedCache.has(f.pattern)).slice(0, 5);
       if (fresh.length === 0) return;
-      fresh.forEach(f => augmentedCache.add(f.pattern));
+      for (const f of fresh) augmentedCache.add(f.pattern);
       const results = await Promise.all(fresh.map(f => runAugment(f.pattern, cwd).then(out => ({ f, out }))));
       const sections = results.filter(r => r.out);
       if (sections.length === 0) return;
@@ -111,8 +115,9 @@ export default function(pi: ExtensionAPI) {
 
     // Collect patterns: primary from input, secondary filenames from result content.
     const primary = extractPattern(event.toolName, event.input);
+    const secondaryLimit = cfg.maxSecondaryPatterns ?? 2;
     const secondary = (event.toolName === 'grep' || event.toolName === 'bash')
-      ? extractFilePatternsFromContent(event.content)
+      ? extractFilePatternsFromContent(event.content, secondaryLimit)
       : [];
     const candidates = [...new Set([primary, ...secondary].filter((p): p is string => !!p))];
 
@@ -120,9 +125,10 @@ export default function(pi: ExtensionAPI) {
     const fresh = candidates.filter(p => !augmentedCache.has(p));
     if (fresh.length === 0) return;
 
-    // Run up to 3 augments in parallel, merge results.
-    const toRun = fresh.slice(0, 3);
-    toRun.forEach(p => augmentedCache.add(p));
+    // Run augments in parallel, merge results.
+    const maxAugments = cfg.maxAugmentsPerResult ?? 3;
+    const toRun = fresh.slice(0, maxAugments);
+    for (const p of toRun) augmentedCache.add(p);
     const results = await Promise.all(toRun.map(p => runAugment(p, cwd)));
     const combined = results.filter(Boolean).join('\n\n');
     if (!combined) return;
@@ -139,17 +145,20 @@ export default function(pi: ExtensionAPI) {
   async function onSession(ctx: ExtensionContext) {
     mcpClient.stop();
     clearIndexCache();
-    augmentEnabled = true;
     augmentHits = 0;
     hookFires = 0;
     augmentedCache.clear();
     sessionCwd = ctx.cwd;
     await resolveShellPath();
 
+    // Load persisted config
+    cfg = loadSavedConfig();
+    augmentEnabled = cfg.autoAugment !== false;
+    if (cfg.augmentTimeout) setAugmentTimeout(cfg.augmentTimeout);
+
     // Resolve command: default → saved config → CLI flag (highest precedence)
-    const saved = loadSavedConfig().cmd;
     const flag = pi.getFlag('gitnexus-cmd') as string | undefined;
-    setGitnexusCmd(resolveGitNexusCmd(flag, saved));
+    setGitnexusCmd(resolveGitNexusCmd(flag, cfg.cmd));
 
     binaryAvailable = await probeGitNexusBinary();
     if (!findGitNexusIndex(ctx.cwd)) return;
@@ -177,8 +186,8 @@ export default function(pi: ExtensionAPI) {
       const sub = parts[0] ?? '';
       const rest = parts.slice(1).join(' ');
 
-      // /gitnexus  or  /gitnexus status
-      if (!sub || sub === 'status') {
+      // /gitnexus status
+      if (sub === 'status') {
         if (!binaryAvailable) {
           ctx.ui.notify('gitnexus is not installed. Install: npm i -g gitnexus', 'warning');
           return;
@@ -215,7 +224,7 @@ export default function(pi: ExtensionAPI) {
           '  /gitnexus             — show status\n' +
           '  /gitnexus analyze     — index the codebase\n' +
           '  /gitnexus on|off      — enable/disable auto-augment on searches\n' +
-          '  /gitnexus config      — set the gitnexus command (saved to ~/.pi/pi-gitnexus.json)\n' +
+          '  /gitnexus settings    — interactive settings menu\n' +
           '  /gitnexus <pattern>   — manual graph lookup\n' +
           '  /gitnexus query <q>   — search execution flows\n' +
           '  /gitnexus context <n> — callers/callees of a symbol\n' +
@@ -237,16 +246,56 @@ export default function(pi: ExtensionAPI) {
         return;
       }
 
-      // /gitnexus config
-      if (sub === 'config') {
-        const current = gitnexusCmd.join(' ');
-        const input = await ctx.ui.input('gitnexus command', current);
-        if (input === undefined) return; // cancelled
-        const trimmed = input.trim();
-        if (!trimmed) return;
-        setGitnexusCmd(trimmed.split(/\s+/));
-        saveConfig({ cmd: trimmed });
-        ctx.ui.notify(`GitNexus command set to: ${trimmed}`, 'info');
+      // /gitnexus  or  /gitnexus config | settings — main menu
+      if (!sub || sub === 'config' || sub === 'settings') {
+        const state = { augmentEnabled };
+        const showStatus = async () => {
+          if (!binaryAvailable) {
+            ctx.ui.notify('gitnexus is not installed. Install: npm i -g gitnexus', 'warning');
+            return;
+          }
+          if (!findGitNexusIndex(ctx.cwd)) {
+            ctx.ui.notify('No GitNexus index found. Run: /gitnexus analyze', 'info');
+            return;
+          }
+          const out = await new Promise<string>((resolve_) => {
+            let stdout = '';
+            const [bin, ...baseArgs] = gitnexusCmd;
+            const proc = spawn(bin, [...baseArgs, 'status'], {
+              cwd: ctx.cwd,
+              stdio: ['ignore', 'pipe', 'ignore'],
+              env: spawnEnv,
+            });
+            proc.stdout.on('data', (chunk: { toString(): string }) => { stdout += chunk.toString(); });
+            proc.on('close', () => resolve_(stdout.trim()));
+            proc.on('error', () => resolve_(''));
+          });
+          const augmentLine = state.augmentEnabled
+            ? `Auto-augment: on (${hookFires} intercepted, ${augmentHits} enriched this session)`
+            : 'Auto-augment: off';
+          ctx.ui.notify((out ? out + '\n' : '') + augmentLine, 'info');
+        };
+        const mainMenu = async (): Promise<void> => {
+          const choices = [
+            'Status',
+            'Settings',
+          ];
+          const choice = await ctx.ui.select('GitNexus', choices);
+          if (!choice) return;
+          if (choice === 'Status') {
+            await showStatus();
+            return mainMenu();
+          }
+          if (choice === 'Settings') {
+            await openSettingsMenu(ctx.ui, cfg, state, async () => {
+              augmentEnabled = state.augmentEnabled;
+              if (cfg.cmd) setGitnexusCmd(cfg.cmd.trim().split(/\s+/));
+              if (cfg.augmentTimeout) setAugmentTimeout(cfg.augmentTimeout);
+            });
+            return mainMenu();
+          }
+        };
+        await mainMenu();
         return;
       }
 
