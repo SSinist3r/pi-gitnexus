@@ -19,8 +19,9 @@ class FakeStream extends EventEmitter {
 }
 
 describe('mcp-client error behavior', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     spawnMock.mockReset();
+    vi.resetModules();
   });
 
   it('throws when the MCP tool response is flagged as an error', async () => {
@@ -60,5 +61,29 @@ describe('mcp-client error behavior', () => {
 
     await expect(mcpClient.callTool('query', { query: 'auth' }, '/repo')).rejects.toThrow('[GitNexus] repo selection failed');
     mcpClient.stop();
+  });
+
+  it('kills a starting MCP process when stop() is called before initialize completes', async () => {
+    const stdout = new FakeStream();
+    const stdin = new FakeStream();
+    const proc = new EventEmitter() as EventEmitter & {
+      stdout: FakeStream;
+      stdin: FakeStream;
+      kill: (signal?: string) => boolean;
+    };
+    proc.stdout = stdout;
+    proc.stdin = stdin;
+    proc.kill = vi.fn(() => true);
+
+    stdin.write.mockReturnValue(true);
+    spawnMock.mockReturnValue(proc);
+
+    const { mcpClient } = await import('../src/mcp-client');
+    const pending = mcpClient.callTool('query', { query: 'auth' }, '/repo');
+
+    mcpClient.stop();
+
+    expect(proc.kill).toHaveBeenCalledWith('SIGTERM');
+    await expect(pending).rejects.toThrow('[GitNexus] MCP client stopped');
   });
 });

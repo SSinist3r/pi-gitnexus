@@ -31,6 +31,7 @@ interface McpToolResult {
  */
 class GitNexusMcpClient {
   private proc: ChildProcess | null = null;
+  private startingProc: ChildProcess | null = null;
   private buffer = '';
   private pending = new Map<number, { resolve: (raw: string) => void; reject: (e: Error) => void }>();
   private nextId = 2; // id 1 is reserved for the initialize handshake
@@ -51,8 +52,13 @@ class GitNexusMcpClient {
         stdio: ['pipe', 'pipe', 'ignore'],
         env: spawnEnv,
       });
+      this.startingProc = proc;
 
       proc.on('error', (err) => {
+        if (this.startingProc === proc) this.startingProc = null;
+        if (this.proc === proc) this.proc = null;
+        this.buffer = '';
+        this.nextId = 2;
         this.startPromise = null;
         reject(err);
       });
@@ -75,8 +81,11 @@ class GitNexusMcpClient {
       });
 
       proc.on('close', () => {
-        this.proc = null;
+        if (this.startingProc === proc) this.startingProc = null;
+        if (this.proc === proc) this.proc = null;
         this.startPromise = null;
+        this.buffer = '';
+        this.nextId = 2;
         for (const p of this.pending.values()) {
           p.reject(new Error('gitnexus mcp process exited'));
         }
@@ -100,6 +109,7 @@ class GitNexusMcpClient {
           proc.stdin!.write(
             JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n'
           );
+          this.startingProc = null;
           this.proc = proc;
           resolve_();
         },
@@ -185,13 +195,23 @@ class GitNexusMcpClient {
     return new Error(`[GitNexus] ${message || fallback}`);
   }
 
-  /** Terminate the MCP process. Called on session_switch so the next session gets a fresh process. */
+  /** Terminate the MCP process. Called on session shutdown or before reindexing. */
   stop(): void {
-    if (this.proc) {
-      this.proc.kill('SIGTERM');
-      this.proc = null;
-    }
+    const proc = this.proc;
+    const startingProc = this.startingProc;
+    this.proc = null;
+    this.startingProc = null;
     this.startPromise = null;
+    this.buffer = '';
+    this.nextId = 2;
+
+    if (proc) {
+      proc.kill('SIGTERM');
+    }
+    if (startingProc && startingProc !== proc) {
+      startingProc.kill('SIGTERM');
+    }
+
     for (const p of this.pending.values()) {
       p.reject(new Error('MCP client stopped'));
     }
