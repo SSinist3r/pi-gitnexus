@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.6.0
+
+**Breaking — peer dependency change.** Now requires `@mariozechner/pi-ai` and `@mariozechner/pi-coding-agent` ≥ 0.70, and `typebox` (unscoped, ≥ 1.x) instead of `@sinclair/typebox`. Users still on the 0.62 line of pi-ai/pi-coding-agent should stay on pi-gitnexus 0.5.x.
+
+- **Migrated to `typebox` 1.x** — `@sinclair/typebox` (legacy 0.x line) was replaced by `typebox` (Sinclair's new 1.x package). pi-ai 0.70 re-exports `Type` from there. The only call site is `src/tools.ts`; API surface used (`Type.Object`, `Type.String`, `Type.Optional`, etc.) is unchanged.
+- **Dropped `session_switch` listener** — pi-coding-agent 0.70 unified session activation under a single `session_start` event with a `reason` field (`"startup" | "reload" | "new" | "resume" | "fork"`). The previous `session_switch` event was removed; one `session_start` registration now covers both initial start and switches.
+- **Routine dev-dep bumps**: `@biomejs/biome` ^2.4.8 → ^2.4.13, `@types/node` ^25.3.0 → ^25.6.0, `typescript` ^6.0.2 → ^6.0.3, `vitest` ^4.1.1 → ^4.1.5.
+- Side effect: `npm audit` now reports 0 vulnerabilities (was 11). The pi-ai 0.70 transitive tree no longer pulls in the previously-flagged packages.
+
 ## 0.5.2
 
 - **Windows compatibility — `gitnexus` binary now spawns correctly** — switched all seven `gitnexus`-invoking `child_process.spawn` call sites (binary probe, `/gitnexus status` and `/gitnexus analyze` from both the direct command and the interactive menu, `runAugment`, MCP client) to [`cross-spawn`](https://www.npmjs.com/package/cross-spawn). On Windows, npm-installed global binaries are `.cmd` shims that the native `spawn` cannot execute directly; previously every call silently failed with the "gitnexus not on PATH" warning even when the binary was correctly installed, and `gitnexus_*` tools failed with ENOENT on every MCP call. cross-spawn resolves the binary, dispatches `.cmd`/`.bat` shims through `cmd.exe` with proper per-argument escaping, and is a no-op on macOS/Linux.

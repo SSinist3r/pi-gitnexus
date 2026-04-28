@@ -96,7 +96,7 @@ export function findGitNexusIndex(cwd: string): boolean {
   return findGitNexusRoot(cwd) != null;
 }
 
-/** Clear the index cache. Call on session_switch when cwd may have changed. */
+/** Clear the index cache. Call on session_start when cwd may have changed. */
 export function clearIndexCache(): void {
   indexRootCache.clear();
 }

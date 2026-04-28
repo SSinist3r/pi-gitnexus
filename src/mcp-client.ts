@@ -186,7 +186,7 @@ class GitNexusMcpClient {
     return new Error(`[GitNexus] ${message || fallback}`);
   }
 
-  /** Terminate the MCP process. Called on session_switch so the next session gets a fresh process. */
+  /** Terminate the MCP process. Called on session_start so the next session gets a fresh process. */
   stop(): void {
     if (this.proc) {
       this.proc.kill('SIGTERM');

@@ -1,7 +1,7 @@
 import { StringEnum } from '@mariozechner/pi-ai';
 import type { ExtensionAPI, ExtensionContext } from '@mariozechner/pi-coding-agent';
-import { Type } from '@sinclair/typebox';
 import { isAbsolute } from 'path';
+import { Type } from 'typebox';
 import { expandUserPath, findGitNexusIndex, findGitNexusRoot, normalizePathArg, safeResolvePath, toRepoRelativePath, validateRepoRelativePath } from './gitnexus';
 import { mcpClient } from './mcp-client';
 
