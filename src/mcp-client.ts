@@ -1,4 +1,5 @@
-import { ChildProcess, spawn } from 'child_process';
+import type { ChildProcess } from 'child_process';
+import spawn from 'cross-spawn';
 import { gitnexusCmd, MAX_OUTPUT_CHARS, spawnEnv } from './gitnexus';
 
 interface JsonRpcResponse {

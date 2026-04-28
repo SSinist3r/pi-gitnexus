@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.2
+
+- **Windows compatibility — `gitnexus` binary now spawns correctly** — switched all seven `gitnexus`-invoking `child_process.spawn` call sites (binary probe, `/gitnexus status` and `/gitnexus analyze` from both the direct command and the interactive menu, `runAugment`, MCP client) to [`cross-spawn`](https://www.npmjs.com/package/cross-spawn). On Windows, npm-installed global binaries are `.cmd` shims that the native `spawn` cannot execute directly; previously every call silently failed with the "gitnexus not on PATH" warning even when the binary was correctly installed, and `gitnexus_*` tools failed with ENOENT on every MCP call. cross-spawn resolves the binary, dispatches `.cmd`/`.bat` shims through `cmd.exe` with proper per-argument escaping, and is a no-op on macOS/Linux.
+- **Defense-in-depth over `shell: true`** — `shell: process.platform === 'win32'` (the obvious one-line fix) would have routed agent-derived `augment <pattern>` args through `cmd.exe` parsing on Windows. Modern Node (≥ 18.20.2 / 20.12.2 / 21.7.3) blocks the worst metacharacters in args under `shell: true` after CVE-2024-27980, so this is hardening, not a CVE patch — but cross-spawn avoids the shell entirely, which is the cleaner property.
+- **New runtime dependency** — `cross-spawn@7.0.6` (pinned exactly). Already present transitively via `@google/genai` → `gaxios` → `glob` → `foreground-child`, so no new code in the install tree.
+
 ## 0.5.1
 
 - **Smarter pattern extraction** — grep/rg regex patterns are now parsed to extract the longest identifier-like literal instead of blindly stripping all metacharacters. `(Foo|Bar)` correctly extracts `Foo` instead of producing `FooBar`.

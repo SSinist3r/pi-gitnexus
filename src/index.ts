@@ -1,5 +1,5 @@
 import type { ExtensionAPI, ExtensionContext } from '@mariozechner/pi-coding-agent';
-import { spawn } from 'child_process';
+import spawn from 'cross-spawn';
 import { clearIndexCache, extractFilePatternsFromContent, extractFilesFromReadMany, extractPattern, findGitNexusIndex, findGitNexusRoot, type GitNexusConfig, gitnexusCmd, loadSavedConfig, resolveGitNexusCmd, runAugment, setAugmentTimeout, setGitnexusCmd, spawnEnv, updateSpawnEnv } from './gitnexus';
 import { mcpClient } from './mcp-client';
 import { registerTools } from './tools';
@@ -12,7 +12,7 @@ async function resolveShellPath(): Promise<void> {
   const path = await new Promise<string>((resolve_) => {
     let out = '';
     const proc = spawn('/bin/sh', ['-lc', 'printf %s "$PATH"'], { stdio: ['ignore', 'pipe', 'ignore'] });
-    proc.stdout.on('data', (d: { toString(): string }) => { out += d.toString(); });
+    proc.stdout!.on('data', (d: { toString(): string }) => { out += d.toString(); });
     proc.on('close', () => resolve_(out.trim() || (process.env.PATH ?? '')));
     proc.on('error', () => resolve_(process.env.PATH ?? ''));
   });
@@ -241,7 +241,7 @@ export default function(pi: ExtensionAPI) {
             stdio: ['ignore', 'pipe', 'ignore'],
             env: spawnEnv,
           });
-          proc.stdout.on('data', (chunk: { toString(): string }) => { stdout += chunk.toString(); });
+          proc.stdout!.on('data', (chunk: { toString(): string }) => { stdout += chunk.toString(); });
           proc.on('close', () => resolve_(stdout.trim()));
           proc.on('error', () => resolve_(''));
         });

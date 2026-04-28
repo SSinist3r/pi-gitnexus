@@ -1,4 +1,4 @@
-import { spawn } from 'child_process';
+import spawn from 'cross-spawn';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { homedir } from 'os';
 import { basename, extname, join, posix, relative, resolve, sep } from 'path';
@@ -375,7 +375,7 @@ export async function runAugment(pattern: string, cwd: string): Promise<string> 
       }
     }, augmentTimeout);
 
-    proc.stderr.on('data', (chunk: { toString(): string }) => { output += chunk.toString(); });
+    proc.stderr!.on('data', (chunk: { toString(): string }) => { output += chunk.toString(); });
 
     proc.on('close', (code: number | null) => {
       if (done) return;
