@@ -226,7 +226,11 @@ export default function(pi: ExtensionAPI) {
     }
   }
 
-  pi.on('session_start', (_event: unknown, ctx: ExtensionContext) => { void onSession(ctx); });
+  pi.on('session_start', (_event: unknown, ctx: ExtensionContext) => {
+    void onSession(ctx).catch(err => {
+      ctx.ui.notify(`GitNexus session init failed: ${err.message}`, 'error');
+    });
+  });
 
   const subcommands = ['status', 'analyze', 'on', 'off', 'settings', 'query', 'context', 'impact', 'help'];
 
