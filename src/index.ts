@@ -7,6 +7,9 @@ import { openMainMenu } from './ui/main-menu';
 
 const SEARCH_TOOLS = new Set(['grep', 'find', 'bash', 'read', 'read_many']);
 
+/** Platform-appropriate PATH separator. */
+const PATH_SEP = process.platform === 'win32' ? ';' : ':';
+
 /**
  * Merge two PATH values, preferring the agent's PATH over the login shell's PATH
  * while preserving order.  Any shell-only directories (e.g. nvm/fnm/volta paths
@@ -16,22 +19,30 @@ const SEARCH_TOOLS = new Set(['grep', 'find', 'bash', 'read', 'read_many']);
  * from being silently dropped when the login shell reports a different PATH.
  */
 function mergePaths(agent: string, shell: string): string {
-  const agentDirs = agent.split(':');
-  const shellDirs = shell.split(':');
+  const agentDirs = agent.split(PATH_SEP);
+  const shellDirs = shell.split(PATH_SEP);
   const agentSet = new Set(agentDirs);
   const merged = [...agentDirs, ...shellDirs.filter(d => !agentSet.has(d))];
-  return merged.join(':');
+  return merged.join(PATH_SEP);
 }
 
 /**
  * Resolve PATH from a login shell so nvm/fnm/volta binaries are visible.
  * Merges with the agent's current PATH so directories already present
  * (e.g. ~/.local/share/nvm/…) are never lost.
+ *
+ * On Windows the agent's PATH is already correct so we skip the login-shell
+ * probe entirely.  On macOS we use the user's actual login shell ($SHELL)
+ * instead of /bin/sh so that Homebrew, nvm, volta etc. are found.
  */
 async function resolveShellPath(): Promise<void> {
+  if (process.platform === 'win32') {
+    return;
+  }
+  const loginShell = process.env.SHELL ?? '/bin/sh';
   const shellPath = await new Promise<string>((resolve_) => {
     let out = '';
-    const proc = spawn('/bin/sh', ['-lc', 'printf %s "$PATH"'], { stdio: ['ignore', 'pipe', 'ignore'] });
+    const proc = spawn(loginShell, ['-lc', 'printf %s "$PATH"'], { stdio: ['ignore', 'pipe', 'ignore'] });
     proc.stdout!.on('data', (d: { toString(): string }) => { out += d.toString(); });
     proc.on('close', () => resolve_(out.trim() || (process.env.PATH ?? '')));
     proc.on('error', () => resolve_(process.env.PATH ?? ''));
