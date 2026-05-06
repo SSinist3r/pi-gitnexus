@@ -1,4 +1,4 @@
-import { spawn } from 'child_process';
+import spawn from 'cross-spawn';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { homedir } from 'os';
 import { basename, extname, join, posix, relative, resolve, sep } from 'path';
@@ -8,8 +8,9 @@ export const MAX_OUTPUT_CHARS = 8 * 1024;
 
 /**
  * Environment passed to all child processes.
- * Resolved from a login shell on session_start to pick up nvm/fnm/volta PATH entries
- * that are missing when pi launches as a GUI app.
+ * On session_start, the agent's PATH is merged with the login shell's PATH
+ * (via resolveShellPath) so that nvm/fnm/volta paths are picked up while
+ * preserving any directories the agent already had (e.g. ~/.local/share/nvm/…).
  */
 export let spawnEnv: NodeJS.ProcessEnv = process.env;
 export function updateSpawnEnv(env: NodeJS.ProcessEnv): void { spawnEnv = env; }
@@ -96,7 +97,7 @@ export function findGitNexusIndex(cwd: string): boolean {
   return findGitNexusRoot(cwd) != null;
 }
 
-/** Clear the index cache. Call on session_switch when cwd may have changed. */
+/** Clear the index cache. Call on session_start when cwd may have changed. */
 export function clearIndexCache(): void {
   indexRootCache.clear();
 }
@@ -375,7 +376,7 @@ export async function runAugment(pattern: string, cwd: string): Promise<string> 
       }
     }, augmentTimeout);
 
-    proc.stderr.on('data', (chunk: { toString(): string }) => { output += chunk.toString(); });
+    proc.stderr!.on('data', (chunk: { toString(): string }) => { output += chunk.toString(); });
 
     proc.on('close', (code: number | null) => {
       if (done) return;

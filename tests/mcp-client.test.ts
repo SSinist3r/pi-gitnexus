@@ -5,8 +5,8 @@ vi.useFakeTimers();
 
 const spawnMock = vi.fn();
 
-vi.mock('child_process', () => ({
-  spawn: spawnMock,
+vi.mock('cross-spawn', () => ({
+  default: spawnMock,
 }));
 
 vi.mock('../src/gitnexus', () => ({

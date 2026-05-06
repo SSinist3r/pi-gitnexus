@@ -1,11 +1,32 @@
 # Changelog
 
-## 0.5.2
+## 0.6.2
 
 - **Idle MCP shutdown** — `gitnexus mcp` is now stopped 60 seconds after the last tool call instead of staying alive for the whole pi session.
 - **Analyze cleanup** — `/gitnexus analyze` now stops any active GitNexus MCP process before reindexing so the next tool call starts a fresh server against the updated graph.
 - **Lifecycle cleanup** — uses `session_shutdown` for teardown instead of the removed `session_switch` event, preventing stale GitNexus child processes from surviving past their last use.
 - **MCP startup hardening** — stopping the client while `gitnexus mcp` is still handshaking now kills that starting process cleanly and resets client state.
+## 0.6.1
+
+- **PATH resolution no longer drops nvm/fnm/volta dirs** — `resolveShellPath` previously *replaced* `process.env.PATH` with the login shell's PATH, which silently dropped any directories the agent already had (e.g. `~/.local/share/nvm/…` inherited from the launching shell). On macOS where users typically place nvm setup in `.zshrc` (interactive) rather than `.zprofile` (login), the login-shell probe returns a PATH without nvm — and the old code then clobbered nvm out of the agent's PATH, producing spurious "gitnexus is not on PATH" warnings even when gitnexus was correctly installed. Now both PATHs are merged with agent-first precedence and platform-aware deduplication via `node:path`'s `delimiter`.
+- **Login-shell probe uses `$SHELL` and is bounded by a 3s timeout** — replaced the hardcoded `/bin/sh` (which never sources zsh/bash login files) with `$SHELL`, and short-circuits on Windows where the agent's PATH is already correct. A 3-second timeout prevents a slow or broken `.zprofile`/`.bash_profile` from stalling session initialization.
+- **`tool_result` hook no longer crashes on error results** — added a guard for `event.content` being undefined or non-array, which can occur for tool error responses. Previously `event.content.map(...)` threw a `TypeError` and broke the augmentation pipeline for the rest of the session.
+- **`session_start` errors are surfaced instead of swallowed** — the previous `void onSession(ctx)` silently dropped any thrown error during session initialization. Now a `.catch` reports the failure via `ctx.ui.notify` so the user sees what went wrong.
+
+## 0.6.0
+
+**Breaking — peer dependency change.** Now requires `@mariozechner/pi-ai` and `@mariozechner/pi-coding-agent` ≥ 0.70, and `typebox` (unscoped, ≥ 1.x) instead of `@sinclair/typebox`. Users still on the 0.62 line of pi-ai/pi-coding-agent should stay on pi-gitnexus 0.5.x.
+
+- **Migrated to `typebox` 1.x** — `@sinclair/typebox` (legacy 0.x line) was replaced by `typebox` (Sinclair's new 1.x package). pi-ai 0.70 re-exports `Type` from there. The only call site is `src/tools.ts`; API surface used (`Type.Object`, `Type.String`, `Type.Optional`, etc.) is unchanged.
+- **Dropped `session_switch` listener** — pi-coding-agent 0.70 unified session activation under a single `session_start` event with a `reason` field (`"startup" | "reload" | "new" | "resume" | "fork"`). The previous `session_switch` event was removed; one `session_start` registration now covers both initial start and switches.
+- **Routine dev-dep bumps**: `@biomejs/biome` ^2.4.8 → ^2.4.13, `@types/node` ^25.3.0 → ^25.6.0, `typescript` ^6.0.2 → ^6.0.3, `vitest` ^4.1.1 → ^4.1.5.
+- Side effect: `npm audit` now reports 0 vulnerabilities (was 11). The pi-ai 0.70 transitive tree no longer pulls in the previously-flagged packages.
+
+## 0.5.2
+
+- **Windows compatibility — `gitnexus` binary now spawns correctly** — switched all seven `gitnexus`-invoking `child_process.spawn` call sites (binary probe, `/gitnexus status` and `/gitnexus analyze` from both the direct command and the interactive menu, `runAugment`, MCP client) to [`cross-spawn`](https://www.npmjs.com/package/cross-spawn). On Windows, npm-installed global binaries are `.cmd` shims that the native `spawn` cannot execute directly; previously every call silently failed with the "gitnexus not on PATH" warning even when the binary was correctly installed, and `gitnexus_*` tools failed with ENOENT on every MCP call. cross-spawn resolves the binary, dispatches `.cmd`/`.bat` shims through `cmd.exe` with proper per-argument escaping, and is a no-op on macOS/Linux.
+- **Defense-in-depth over `shell: true`** — `shell: process.platform === 'win32'` (the obvious one-line fix) would have routed agent-derived `augment <pattern>` args through `cmd.exe` parsing on Windows. Modern Node (≥ 18.20.2 / 20.12.2 / 21.7.3) blocks the worst metacharacters in args under `shell: true` after CVE-2024-27980, so this is hardening, not a CVE patch — but cross-spawn avoids the shell entirely, which is the cleaner property.
+- **New runtime dependency** — `cross-spawn@7.0.6` (pinned exactly). Already present transitively via `@google/genai` → `gaxios` → `glob` → `foreground-child`, so no new code in the install tree.
 
 ## 0.5.1
 

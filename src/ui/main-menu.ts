@@ -4,8 +4,8 @@
  * Shows status in the title, with Analyze, Settings, and Help actions.
  */
 
-import { spawn } from 'child_process';
 import { runGitNexusAnalyze } from '../analyze.js';
+import spawn from 'cross-spawn';
 import type { GitNexusConfig } from '../gitnexus.js';
 import { openSettingsMenu } from './settings-menu.js';
 
@@ -50,7 +50,7 @@ async function getStatusLine(mctx: MenuContext): Promise<string> {
       stdio: ['ignore', 'pipe', 'ignore'],
       env: mctx.spawnEnv,
     });
-    proc.stdout.on('data', (chunk: { toString(): string }) => { stdout += chunk.toString(); });
+    proc.stdout!.on('data', (chunk: { toString(): string }) => { stdout += chunk.toString(); });
     proc.on('close', () => resolve_(stdout.trim()));
     proc.on('error', () => resolve_(''));
   });
